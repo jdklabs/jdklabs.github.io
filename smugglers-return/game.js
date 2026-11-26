@@ -1,5 +1,30 @@
 import {renderer} from './renderer.js';
 
+// Windows can expose Sony's HID layout when the browser has no standard mapping.
+function readController(pad) {
+    if (!pad || pad.connected === false) return null;
+    const raw = pad.mapping !== 'standard';
+    if (raw && !(pad.mapping === '' && /dualsense|054c.*0ce6/i.test(pad.id)
+        && pad.buttons.length >= 14 && pad.axes.length >= 6)) return null;
+
+    const pressed = index => !!pad.buttons[index]?.pressed;
+    const stick = index => Math.abs(pad.axes[index] ?? 0) > .12 ? pad.axes[index] : 0;
+    const trigger = (button, axis) => raw
+        ? Math.max(0, Math.min(1, (pad.axes[axis] + 1) / 2))
+        : pad.buttons[button]?.value ?? 0;
+    const hat = pad.axes[9];
+    const direction = raw && hat >= -1 && hat <= 1 ? Math.round((hat + 1) * 3.5) : -1;
+    return {
+        index: pad.index,
+        confirm: pressed(raw ? 1 : 0), back: pressed(raw ? 2 : 1),
+        reset: pressed(raw ? 0 : 2), menu: pressed(3), pause: pressed(9),
+        throttle: trigger(7, 4), brake: trigger(6, 3),
+        horizontal: stick(0), vertical: stick(1), lookX: stick(2), lookY: stick(raw ? 5 : 3),
+        menuAxis: raw ? Number([3,4,5].includes(direction)) - Number([7,0,1].includes(direction))
+            : Number(pressed(13)) - Number(pressed(12)),
+    };
+}
+
 async function launch(){
     const {instance}=await WebAssembly.instantiateStreaming(fetch('./game.wasm'));
     const api=instance.exports;
@@ -50,23 +75,24 @@ async function launch(){
     });
     function frame(now){
         if(!document.hidden){
-            const pads=Array.from(navigator.getGamepads?.()??[]).filter(p=>p?.mapping==='standard');
-            const pad=pads.find(p=>p.index===padIndex)??pads[0];padIndex=pad?.index??null;
-            const down=i=>!!pad?.buttons[i]?.pressed;
-            const axis=i=>Math.abs(pad?.axes[i]??0)>.12?pad.axes[i]:0;
+            const pads=Array.from(navigator.getGamepads?.() ?? [], readController).filter(Boolean);
+            const current=pads.find(p=>p.index===padIndex);
+            // A/Cross claims control even if an idle virtual controller occupies slot zero.
+            const pad=(current?.confirm ? current : pads.find(p=>p.confirm)) ?? current ?? pads[0];
+            padIndex=pad?.index??null;
             const key=name=>Number(keys.has(name));
-            const confirm=down(0)||key('Enter')||key('Space');
+            const confirm=pad?.confirm||key('Enter')||key('Space');
             if(!playing && confirm && !titleConfirmHeld){start();unlockAudio();}
             titleConfirmHeld=!!confirm;
             if(!confirm) releaseConfirm=false;
             if(playing){
-                const lx=axis(0)||key('ArrowRight')-key('ArrowLeft');
-                const ly=axis(1)||key('ArrowDown')-key('ArrowUp');
-                api.sr_tvos_set_controls(!!pad,-lx,Math.max(pad?.buttons[7]?.value??0,key('ArrowUp')),
-                    Math.max(pad?.buttons[6]?.value??0,key('ArrowDown')),confirm&&!releaseConfirm,
-                    down(2)||key('KeyR'),Number(down(13))-Number(down(12))||ly,
-                    down(3)||key('Tab'),down(1)||key('Escape'),down(9)||key('Escape'),
-                    lx,-ly,axis(2),-axis(3));
+                const lx=pad?.horizontal||key('ArrowRight')-key('ArrowLeft');
+                const ly=pad?.vertical||key('ArrowDown')-key('ArrowUp');
+                api.sr_tvos_set_controls(!!pad,-lx,Math.max(pad?.throttle??0,key('ArrowUp')),
+                    Math.max(pad?.brake??0,key('ArrowDown')),confirm&&!releaseConfirm,
+                    pad?.reset||key('KeyR'),pad?.menuAxis||ly,
+                    pad?.menu||key('Tab'),pad?.back||key('Escape'),pad?.pause||key('Escape'),
+                    lx,-ly,pad?.lookX??0,-(pad?.lookY??0));
                 api.sr_tvos_advance(last?Math.min((now-last)/1000,.1):0);
                 api.sr_tvos_get_telemetry(telemetry);
                 const menu=api.sr_tvos_menu_text(text,4096);
