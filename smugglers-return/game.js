@@ -20,6 +20,8 @@ function readController(pad) {
         reset: pressed(raw ? 0 : 2), menu: pressed(3), pause: pressed(9),
         throttle: trigger(7, 4), brake: trigger(6, 3),
         horizontal: stick(0), vertical: stick(1), lookX: stick(2), lookY: stick(raw ? 5 : 3),
+        menuHorizontal: raw ? Number([1,2,3].includes(direction)) - Number([5,6,7].includes(direction))
+            : Number(pressed(15)) - Number(pressed(14)),
         menuAxis: raw ? Number([3,4,5].includes(direction)) - Number([7,0,1].includes(direction))
             : Number(pressed(13)) - Number(pressed(12)),
     };
@@ -43,6 +45,7 @@ function dualSenseInput(reportId, data) {
         reset: !!(face & 16), menu: !!(face & 128), pause: !!(bytes[simple ? 5 : 8] & 32),
         brake: bytes[simple ? 7 : 4] / 255, throttle: bytes[simple ? 8 : 5] / 255,
         horizontal: stick(0), vertical: stick(1), lookX: stick(2), lookY: stick(3),
+        menuHorizontal: Number([1,2,3].includes(hat)) - Number([5,6,7].includes(hat)),
         menuAxis: [7,0,1].includes(hat) ? -1 : Number([3,4,5].includes(hat)),
     };
 }
@@ -166,7 +169,7 @@ async function launch(){
                 const ly=pad?.vertical||key('ArrowDown')-key('ArrowUp');
                 api.sr_tvos_set_controls(!!pad,-lx,Math.max(pad?.throttle??0,key('ArrowUp')),
                     Math.max(pad?.brake??0,key('ArrowDown')),confirm&&!releaseConfirm,
-                    pad?.reset||key('KeyR'),pad?.menuAxis||ly,
+                    pad?.reset||key('KeyR'),pad?.menuAxis||ly,pad?.menuHorizontal||lx,
                     pad?.menu||key('Tab'),pad?.back||key('Escape'),pad?.pause||key('Escape'),
                     lx,-ly,pad?.lookX??0,-(pad?.lookY??0));
                 api.sr_tvos_advance(last?Math.min((now-last)/1000,.1):0);
