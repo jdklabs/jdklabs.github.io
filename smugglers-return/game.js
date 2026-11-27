@@ -105,7 +105,7 @@ async function launch(){
     const render=renderer(document.querySelector('canvas'),api);
     const title=document.querySelector('main'), button=document.querySelector('button'), hud=document.querySelector('pre');
     const hidController=connectDualSense(document.querySelector('#connect-dualsense'));
-    const telemetry=api.web_buffer(80), text=api.web_buffer(4096), pcm=api.web_buffer(4096*4);
+    const text=api.web_buffer(4096), pcm=api.web_buffer(4096*4);
     const decoder=new TextDecoder(), keys=new Set();
     let audio, scheduled=0, playing=false, releaseConfirm=false, last=0, padIndex=null;
     let titleConfirmHeld=false;
@@ -170,9 +170,8 @@ async function launch(){
                     pad?.menu||key('Tab'),pad?.back||key('Escape'),pad?.pause||key('Escape'),
                     lx,-ly,pad?.lookX??0,-(pad?.lookY??0));
                 api.sr_tvos_advance(last?Math.min((now-last)/1000,.1):0);
-                api.sr_tvos_get_telemetry(telemetry);
                 const menu=api.sr_tvos_menu_text(text,4096);
-                render(new Float32Array(api.memory.buffer,telemetry,18).slice(),!!menu);
+                render();
                 const bytes=new Uint8Array(api.memory.buffer,text,4096);
                 const label=decoder.decode(bytes.subarray(0,bytes.indexOf(0)));
                 if(hud.textContent!==label) hud.textContent=label;

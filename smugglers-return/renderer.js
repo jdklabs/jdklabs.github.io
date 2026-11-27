@@ -98,24 +98,24 @@ export function renderer(canvas, api) {
         }
         upload(scenery,boxes(floats(props,count*17)));
     }
-    let boom;
-    return function render(t,menu) {
-        if(!menu || !boom) boom=t.slice(14,17);
-        const [x,y,z,h]=t.slice(6,10), [side,up,back]=boom;
-        const sin=Math.sin(h), cos=Math.cos(h);
-        const eye=[x-sin*back-cos*side,y+1.5+up,z-cos*back+sin*side];
-        eye[1]=Math.max(eye[1],ground(eye[0],eye[2])+2);
-        const forward=unit([x+7*sin-eye[0],y+1.5-eye[1],z+7*cos-eye[2]]);
-        const right=unit(cross(forward,[0,1,0])), vertical=cross(right,forward);
-        api.sr_tvos_view_plane(...forward,-dot(forward,eye));
+    const view=api.web_buffer(api.web_chase_view_size());
+    return function render() {
         const scale=Math.min(devicePixelRatio,1.5);
         const w=Math.max(1,Math.round(canvas.clientWidth*scale)),height=Math.max(1,Math.round(canvas.clientHeight*scale));
         if(canvas.width!==w || canvas.height!==height){canvas.width=w;canvas.height=height;}
         gl.viewport(0,0,w,height);
-        const sx=1.73*height/w,sy=1.73,depth=1.001, translation=dot(forward,eye);
+        api.sr_chase_view(view,w/height);
+        const snapshot=floats(view,10);
+        const eye=snapshot.slice(0,3), aim=snapshot.slice(3,6);
+        const [x,,z]=snapshot.slice(7);
+        const forward=unit(aim.map((v,i)=>v-eye[i]));
+        const right=unit(cross(forward,[0,1,0])), vertical=cross(right,forward);
+        api.sr_tvos_view_plane(...forward,-dot(forward,eye));
+        const sy=1/Math.tan(snapshot[6]/2), sx=sy*height/w;
+        const near=.1, far=1800, depth=(far+near)/(far-near), translation=dot(forward,eye);
         const camera=[];
         for(let i=0;i<3;i++) camera.push(right[i]*sx,vertical[i]*sy,forward[i]*depth,forward[i]);
-        camera.push(-dot(right,eye)*sx,-dot(vertical,eye)*sy,-translation*depth-.4,-translation);
+        camera.push(-dot(right,eye)*sx,-dot(vertical,eye)*sy,-translation*depth-2*near*far/(far-near),-translation);
         gl.uniformMatrix4fv(matrix,false,camera);
         gl.clearColor(.58,.76,.84,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
         gl.enable(gl.DEPTH_TEST);
